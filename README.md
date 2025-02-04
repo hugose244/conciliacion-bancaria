@@ -1,12 +1,15 @@
-# conciliacion-bancaria
 import pandas as pd
 from fuzzywuzzy import fuzz
 
-# Función para cargar datos desde archivos
+# Función para cargar datos desde archivos Excel
 def cargar_datos(transacciones_path, contabilidad_path):
-    transacciones = pd.read_excel(transacciones_path)
-    contabilidad = pd.read_excel(contabilidad_path)
-    return transacciones, contabilidad
+    try:
+        transacciones = pd.read_excel(transacciones_path)
+        contabilidad = pd.read_excel(contabilidad_path)
+        return transacciones, contabilidad
+    except Exception as e:
+        print(f"❌ Error al cargar los archivos: {e}")
+        exit()
 
 # Función para determinar similitud entre conceptos
 def comparar_conceptos(concepto1, concepto2, threshold=80):
@@ -24,7 +27,7 @@ def clasificar_diferencias(row):
         return 'Partida de Ajuste'
     return 'Conciliado'
 
-# Función para realizar la conciliación bancaria con comparaciones avanzadas
+# Función para realizar la conciliación bancaria
 def conciliar_bancos(transacciones, contabilidad):
     conciliacion = transacciones.merge(contabilidad, on='Referencia', how='outer', indicator=True, suffixes=('_Banco', '_Contabilidad'))
     
@@ -34,7 +37,7 @@ def conciliar_bancos(transacciones, contabilidad):
     )
     
     conciliacion['Diferencia_Concepto'] = conciliacion.apply(
-        lambda row: 'Sí' if comparar_conceptos(row['Concepto_Banco'], row['Concepto_Contabilidad']) is False else 'No',
+        lambda row: 'Sí' if not comparar_conceptos(row['Concepto_Banco'], row['Concepto_Contabilidad']) else 'No',
         axis=1
     )
     
@@ -45,4 +48,23 @@ def conciliar_bancos(transacciones, contabilidad):
 def generar_reporte(conciliacion, output_path):
     with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
         conciliacion.to_excel(writer, sheet_name='Conciliacion', index=False)
-    print(f"✅ Reporte generado: {output_path}")
+    print(f"✅ Reporte generado con éxito: {output_path}")
+
+# --- EJECUCIÓN DEL CÓDIGO ---
+if __name__ == "__main__":
+    # Pedir rutas de los archivos
+    transacciones_path = input("📂 Ingresa la ruta del archivo de extracto bancario (Ej: banco.xlsx): ")
+    contabilidad_path = input("📂 Ingresa la ruta del archivo de contabilidad (Ej: contabilidad.xlsx): ")
+
+    # Cargar archivos
+    transacciones, contabilidad = cargar_datos(transacciones_path, contabilidad_path)
+
+    # Ejecutar conciliación
+    conciliacion = conciliar_bancos(transacciones, contabilidad)
+
+    # Guardar el resultado
+    generar_reporte(conciliacion, "conciliacion_bancaria.xlsx")
+
+    # Mostrar resumen en consola
+    print(conciliacion.head())
+

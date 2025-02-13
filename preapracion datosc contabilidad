@@ -1,0 +1,48 @@
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import NamedStyle
+
+# Definir un estilo de fecha corta para aplicar a las columnas de fecha
+date_style = NamedStyle(name='datetime', number_format='DD/MM/YYYY')
+
+# Cargar el archivo Excel desde la ruta específica
+df_original = pd.read_excel(r"C:/Users/Hug Sec/Desktop/conciliacion bancaria/libban.xlsx")
+
+# Crear columnas DEBE, HABER y SALDO basadas en la columna 'signo' y 'importe'
+df_original['DEBE'] = df_original.apply(lambda x: abs(x['importe']) if x['signo'] == '+' or (x['signo'] == '-' and x['importe'] < 0) else 0, axis=1)
+df_original['HABER'] = df_original.apply(lambda x: abs(x['importe']) if x['signo'] == '-' and x['importe'] >= 0 else 0, axis=1)
+df_original['SALDO'] = df_original['DEBE'].cumsum() - df_original['HABER'].cumsum()
+
+# Agregar una columna que represente el valor absoluto de los importes para identificar pares
+df_original['importe_abs'] = df_original['importe'].abs()
+
+# Identificar pares de movimientos negativos y sus equivalentes positivos
+movimientos_negativos = df_original[(df_original['signo'] == '-') & (df_original['importe'] < 0)]
+movimientos_positivos = df_original[(df_original['signo'] == '+') & (df_original['importe'].isin(movimientos_negativos['importe_abs']))]
+
+# Concatenar ambos DataFrames para los movimientos aislados
+movimientos_aislados = pd.concat([movimientos_negativos, movimientos_positivos]).sort_values(by='fecha')
+
+# Eliminar los movimientos aislados del DataFrame principal para el resumen
+indices_a_eliminar = movimientos_aislados.index
+df_resumen = df_original.drop(indices_a_eliminar)
+
+# Crear el resumen final de transacciones, excluyendo los movimientos aislados y utilizando solo importe_abs
+df_resumen_final = df_resumen.groupby(['fecha', 'descrip']).agg({'importe_abs': 'sum'}).reset_index()
+
+# Guardar el archivo nuevo con todas las hojas necesarias
+output_path = r"C:/Users/Hug Sec/Desktop/conciliacion bancaria/contabilidad procesada.xlsx"
+with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+    df_original.to_excel(writer, sheet_name='Hoja_Principal', index=False)
+    movimientos_aislados[['fecha', 'descrip', 'DEBE', 'HABER', 'SALDO']].to_excel(writer, sheet_name='Movimientos_Aislados', index=False)
+    df_resumen_final[['fecha', 'descrip', 'importe_abs']].to_excel(writer, sheet_name='Resumen_Transacciones_Final', index=False)
+
+    # Aplicar el estilo de fecha a todas las hojas
+    for sheet_name in writer.sheets:
+        worksheet = writer.sheets[sheet_name]
+        for cell in worksheet['A']:
+            cell.style = date_style
+
+# Mensaje final y mostrar el cuadro de resumen en la consola
+print("Archivo procesado correctamente. Aquí está el cuadro de resumen de transacciones:")
+print(df_resumen_final)
